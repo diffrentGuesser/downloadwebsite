@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -41,6 +41,7 @@
     /* Queue */
     .queue { margin-top: 16px; max-height: 46vh; overflow: auto; padding: 8px; display:flex; flex-direction:column; gap:10px; }
     .item { display:flex; gap:12px; padding:10px; border:1px solid var(--border); border-radius: 12px; background:#111421; }
+    .item.error { border-color: var(--err); }
     .thumb { width: 56px; height: 56px; border-radius: 8px; background:#0c0f18; overflow:hidden; display:grid; place-items:center; }
     .thumb img { width:100%; height:100%; object-fit:cover; }
     .meta { flex:1; min-width: 0; }
@@ -48,6 +49,7 @@
     .progress { height: 8px; background:#0c0f18; border-radius:6px; overflow:hidden; margin-top:8px; }
     .bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s linear; }
     .status { font-size: 12px; color: var(--muted); margin-top:6px; }
+    .status.error { color: var(--err); }
 
     /* Right panel */
     .right .panel { height: calc(100% - 0px); display:flex; flex-direction: column; }
@@ -60,6 +62,45 @@
     footer { padding: 10px 16px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
+    
+    /* Toast notifications */
+    .toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .toast {
+      padding: 12px 16px;
+      border-radius: 8px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: toastIn 0.3s ease-out;
+    }
+    .toast.error {
+      border-color: var(--err);
+    }
+    .toast.success {
+      border-color: var(--ok);
+    }
+    .toast.warning {
+      border-color: var(--warn);
+    }
+    @keyframes toastIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes toastOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
   </style>
 </head>
 <body>
@@ -97,6 +138,8 @@
     </section>
   </div>
 
+  <div class="toast-container" id="toastContainer"></div>
+
 <script>
 (() => {
   const dropzone = document.getElementById('dropzone');
@@ -107,11 +150,27 @@
   const downloadBtn = document.getElementById('downloadBtn');
   const clearAllBtn = document.getElementById('clearAllBtn');
   const statusPill = document.getElementById('statusPill');
+  const toastContainer = document.getElementById('toastContainer');
 
   /** Simple sequential queue to process images in order */
   let queue = []; // { id, file, name, el, bar, statusEl }
   let processing = false;
   let idCounter = 0;
+
+  // Supported file types
+  const supportedTypes = ['image/jpeg', 'image/png', 'image/bmp', 'image/webp'];
+  
+  function showToast(message, type = 'normal') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.style.animation = 'toastOut 0.3s ease-out forwards';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
 
   function setStatus(text) { statusPill.textContent = text; }
 
@@ -120,6 +179,10 @@
     const u = ['KB','MB','GB'];
     let i = -1; do { n = n/1024; i++; } while (n >= 1024 && i < u.length - 1);
     return `${n.toFixed(1)} ${u[i]}`;
+  }
+
+  function isValidFileType(file) {
+    return supportedTypes.includes(file.type);
   }
 
   function createItem(file) {
@@ -137,6 +200,8 @@
       </div>`;
 
     const thumb = el.querySelector('.thumb');
+    
+    // Image preview
     const img = document.createElement('img');
     img.alt = file.name;
     img.src = URL.createObjectURL(file);
@@ -156,21 +221,41 @@
 
   function onFilesSelected(files) {
     if (!files || !files.length) return;
-    [...files].forEach(createItem);
-    processQueue();
+    
+    let validFiles = 0;
+    for (const file of files) {
+      if (isValidFileType(file)) {
+        createItem(file);
+        validFiles++;
+      } else {
+        showToast(`Skipped ${file.name}: Unsupported file type`, 'warning');
+      }
+    }
+    
+    if (validFiles > 0) {
+      showToast(`Added ${validFiles} file${validFiles > 1 ? 's' : ''} to queue`, 'success');
+      processQueue();
+    }
+    
+    // Reset the input to fix the double upload issue
+    fileInput.value = '';
   }
 
   // Drag & drop handlers
   dropzone.addEventListener('click', () => fileInput.click());
   dropzone.addEventListener('dragover', (e) => {
-    e.preventDefault(); dropzone.classList.add('dragover');
+    e.preventDefault(); 
+    dropzone.classList.add('dragover');
   });
   dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
   dropzone.addEventListener('drop', (e) => {
-    e.preventDefault(); dropzone.classList.remove('dragover');
+    e.preventDefault(); 
+    dropzone.classList.remove('dragover');
     onFilesSelected(e.dataTransfer.files);
   });
-  fileInput.addEventListener('change', (e) => onFilesSelected(e.target.files));
+  fileInput.addEventListener('change', (e) => {
+    onFilesSelected(e.target.files);
+  });
 
   async function processQueue() {
     if (processing) return;
@@ -188,7 +273,7 @@
   }
 
   async function ocrItem(item) {
-    const { file, bar, statusEl, name } = item;
+    const { file, bar, statusEl, name, el } = item;
     statusEl.textContent = 'Recognizing…';
 
     try {
@@ -204,45 +289,81 @@
 
       bar.style.width = '100%';
       statusEl.textContent = 'Done';
+      statusEl.style.color = 'var(--ok)';
 
-      appendOutput(name, data.text || '');
+      // Append only the extracted text without filename headers
+      appendOutput(data.text || '');
     } catch (err) {
       console.error(err);
-      statusEl.textContent = 'Error';
-      statusEl.style.color = 'var(--err)';
-      appendOutput(name, `[[ OCR ERROR: ${err.message || err} ]]`);
+      statusEl.textContent = 'Error: ' + (err.message || 'Processing failed');
+      statusEl.classList.add('error');
+      el.classList.add('error');
+      appendOutput(`[[ OCR ERROR: ${err.message || err} ]]`);
+      showToast(`Failed to process ${name}`, 'error');
     }
   }
 
-  function appendOutput(name, text) {
-    const header = `\n\n--- ${name} ---\n`;
-    const sep = outputEl.value.trim().length ? '\n' : '';
-    outputEl.value += `${sep}${header}${text.trim()}\n`;
+  function appendOutput(text) {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+    
+    // Add a separator if there's already content
+    const sep = outputEl.value.trim().length ? '\n\n' : '';
+    outputEl.value += `${sep}${cleanText}`;
     outputEl.scrollTop = outputEl.scrollHeight;
   }
 
   copyBtn.addEventListener('click', async () => {
+    if (!outputEl.value.trim()) {
+      showToast('No text to copy', 'warning');
+      return;
+    }
+    
     outputEl.select();
-    try { await navigator.clipboard.writeText(outputEl.value); setStatus('Copied'); }
-    catch { document.execCommand('copy'); setStatus('Copied'); }
-    setTimeout(() => setStatus('Idle'), 1000);
+    try { 
+      await navigator.clipboard.writeText(outputEl.value); 
+      showToast('Text copied to clipboard', 'success');
+    } catch (err) { 
+      try {
+        document.execCommand('copy');
+        showToast('Text copied to clipboard', 'success');
+      } catch (e) {
+        showToast('Failed to copy text', 'error');
+      }
+    }
   });
 
   downloadBtn.addEventListener('click', () => {
+    if (!outputEl.value.trim()) {
+      showToast('No text to download', 'warning');
+      return;
+    }
+    
     const blob = new Blob([outputEl.value], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'extracted-text.txt';
-    document.body.appendChild(a); a.click(); a.remove();
+    a.href = url; 
+    a.download = 'extracted-text.txt';
+    document.body.appendChild(a); 
+    a.click(); 
+    a.remove();
     URL.revokeObjectURL(url);
+    showToast('Text downloaded', 'success');
   });
 
   clearAllBtn.addEventListener('click', () => {
-    queue = []; processing = false;
+    if (queue.length === 0 && outputEl.value === '') {
+      showToast('Already empty', 'warning');
+      return;
+    }
+    
+    queue = []; 
+    processing = false;
     queueEl.innerHTML = '';
     outputEl.value = '';
     setStatus('Cleared');
-    setTimeout(() => setStatus('Idle'), 600);
+    showToast('Queue and output cleared', 'success');
+    setTimeout(() => setStatus('Idle'), 1000);
   });
 })();
 </script>
