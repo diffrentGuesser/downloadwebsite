@@ -1,51 +1,250 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>download (Achtung, Virus...)</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #1f1f1f; /* Dark background */
-            color: #ffffff; /* Light text */
-            padding: 50px;
-            text-align: center;
-        }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Image → Text (OCR)</title>
+  <meta name="description" content="Upload unlimited images and extract their text in order using Tesseract.js. All client-side." />
+  <link rel="icon" href="data:," />
+  <!-- Tesseract.js v5 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1115; --panel:#161922; --muted:#9aa4b2; --text:#e6edf3; --accent:#6ea8fe; --ok:#3fb950; --warn:#d29922; --err:#f85149;
+      --border:#242938;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    header { padding: 18px 24px; border-bottom: 1px solid var(--border); display:flex; align-items:center; gap:14px; }
+    header h1 { font-size: 18px; margin:0; }
+    header .spacer { flex:1; }
+    header .btn { padding:10px 14px; border-radius:12px; background: var(--panel); border:1px solid var(--border); color:var(--text); cursor:pointer; }
+    header .btn:hover { border-color:#2d3346; }
 
-        h1 {
-            color: #00aaff; /* Accent color */
-        }
+    .layout { display:grid; grid-template-columns: minmax(320px, 560px) 1fr; gap: 16px; height: calc(100% - 66px); }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; height:auto; } }
 
-        p {
-            margin-top: 20px;
-            font-size: 18px;
-        }
+    .left, .right { padding: 16px; }
 
-        a {
-            text-decoration: none;
-        }
+    .panel { background: var(--panel); border:1px solid var(--border); border-radius: 16px; }
 
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            background-color: #00aaff; /* Accent color */
-            color: #ffffff; /* Light text */
-            border: none;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
+    /* Dropzone */
+    .dropzone { border: 2px dashed #2d3346; border-radius: 16px; padding: 24px; text-align: center; transition: 0.2s border-color, 0.2s background; cursor:pointer; }
+    .dropzone.dragover { background: rgba(110,168,254,0.08); border-color: var(--accent); }
+    .dropzone input { display:none; }
+    .dropzone h2 { margin: 0 0 6px; font-size: 18px; }
+    .muted { color: var(--muted); font-size: 13px; }
 
-        button:hover {
-            background-color: #0077cc; /* Darker accent color on hover */
-        }
-    </style>
+    /* Queue */
+    .queue { margin-top: 16px; max-height: 46vh; overflow: auto; padding: 8px; display:flex; flex-direction:column; gap:10px; }
+    .item { display:flex; gap:12px; padding:10px; border:1px solid var(--border); border-radius: 12px; background:#111421; }
+    .thumb { width: 56px; height: 56px; border-radius: 8px; background:#0c0f18; overflow:hidden; display:grid; place-items:center; }
+    .thumb img { width:100%; height:100%; object-fit:cover; }
+    .meta { flex:1; min-width: 0; }
+    .meta .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .progress { height: 8px; background:#0c0f18; border-radius:6px; overflow:hidden; margin-top:8px; }
+    .bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s linear; }
+    .status { font-size: 12px; color: var(--muted); margin-top:6px; }
+
+    /* Right panel */
+    .right .panel { height: calc(100% - 0px); display:flex; flex-direction: column; }
+    .toolbar { display:flex; gap:8px; padding: 12px; border-bottom:1px solid var(--border); }
+    .toolbar .btn { padding:8px 12px; border:1px solid var(--border); border-radius: 10px; background:#111421; color:var(--text); cursor:pointer; }
+    .toolbar .btn:hover { border-color:#2d3346; }
+    .toolbar .pill { margin-left:auto; padding: 6px 10px; border:1px solid var(--border); border-radius:999px; font-size:12px; color: var(--muted); background:#0c0f18; }
+    textarea { flex:1; width:100%; resize:none; padding: 14px; background: transparent; color: var(--text); border:0; outline:none; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+
+    footer { padding: 10px 16px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
 </head>
 <body>
-    <h1>Download Virus</h1>
-    <p>Download Virus now</p>
-    <a href="https://github.com/diffrentGuesser/downloadwebsite/raw/main/Download.exe" download>
-        <button>Virus.exe</button>
-    </a>
+  <header>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h6l2 2h6a2 2 0 0 1 2 2v3H3V5Z" stroke="#6ea8fe" stroke-width="1.5"/><path d="M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" stroke="#6ea8fe" stroke-width="1.5"/><path d="M7 14h10M7 18h6" stroke="#6ea8fe" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <h1>Image → Text (OCR)</h1>
+    <div class="spacer"></div>
+    <button id="clearAllBtn" class="btn" title="Clear queue and output">Clear</button>
+  </header>
+
+  <div class="layout">
+    <section class="left">
+      <div class="panel" id="leftPanel">
+        <label class="dropzone" id="dropzone">
+          <input id="fileInput" type="file" accept="image/*" multiple />
+          <h2>Drop images here or click to select</h2>
+          <div class="muted">Unlimited images. Everything runs locally in your browser.</div>
+        </label>
+        <div class="queue" id="queue"></div>
+      </div>
+    </section>
+
+    <section class="right">
+      <div class="panel" id="rightPanel">
+        <div class="toolbar">
+          <button class="btn" id="copyBtn">Copy all text</button>
+          <button class="btn" id="downloadBtn">Download .txt</button>
+          <span class="pill" id="statusPill">Idle</span>
+        </div>
+        <textarea id="output" placeholder="Extracted text will appear here in the same order as your images..."></textarea>
+        <footer>
+          OCR by <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noreferrer">Tesseract.js</a>. Your images never leave this device.
+        </footer>
+      </div>
+    </section>
+  </div>
+
+<script>
+(() => {
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const queueEl = document.getElementById('queue');
+  const outputEl = document.getElementById('output');
+  const copyBtn = document.getElementById('copyBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+  const statusPill = document.getElementById('statusPill');
+
+  /** Simple sequential queue to process images in order */
+  let queue = []; // { id, file, name, el, bar, statusEl }
+  let processing = false;
+  let idCounter = 0;
+
+  function setStatus(text) { statusPill.textContent = text; }
+
+  function bytesToNice(n) {
+    if (n < 1024) return `${n} B`;
+    const u = ['KB','MB','GB'];
+    let i = -1; do { n = n/1024; i++; } while (n >= 1024 && i < u.length - 1);
+    return `${n.toFixed(1)} ${u[i]}`;
+  }
+
+  function createItem(file) {
+    const id = ++idCounter;
+
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.innerHTML = `
+      <div class="thumb"><span>…</span></div>
+      <div class="meta">
+        <div class="name">${file.name}</div>
+        <div class="muted">${bytesToNice(file.size)}</div>
+        <div class="progress"><div class="bar"></div></div>
+        <div class="status">Queued</div>
+      </div>`;
+
+    const thumb = el.querySelector('.thumb');
+    const img = document.createElement('img');
+    img.alt = file.name;
+    img.src = URL.createObjectURL(file);
+    img.onload = () => URL.revokeObjectURL(img.src);
+    thumb.innerHTML = '';
+    thumb.appendChild(img);
+
+    const bar = el.querySelector('.bar');
+    const statusEl = el.querySelector('.status');
+
+    queueEl.appendChild(el);
+
+    const item = { id, file, name: file.name, el, bar, statusEl };
+    queue.push(item);
+    return item;
+  }
+
+  function onFilesSelected(files) {
+    if (!files || !files.length) return;
+    [...files].forEach(createItem);
+    processQueue();
+  }
+
+  // Drag & drop handlers
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault(); dropzone.classList.add('dragover');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault(); dropzone.classList.remove('dragover');
+    onFilesSelected(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', (e) => onFilesSelected(e.target.files));
+
+  async function processQueue() {
+    if (processing) return;
+    processing = true;
+    setStatus('Processing…');
+
+    while (queue.length) {
+      const item = queue[0];
+      await ocrItem(item); // sequential to preserve order
+      queue.shift();
+    }
+
+    setStatus('Idle');
+    processing = false;
+  }
+
+  async function ocrItem(item) {
+    const { file, bar, statusEl, name } = item;
+    statusEl.textContent = 'Recognizing…';
+
+    try {
+      const { data } = await Tesseract.recognize(file, 'eng', {
+        logger: (m) => {
+          if (m.status && typeof m.progress === 'number') {
+            const p = Math.round(m.progress * 100);
+            bar.style.width = p + '%';
+            statusEl.textContent = `${m.status} (${p}%)`;
+          }
+        }
+      });
+
+      bar.style.width = '100%';
+      statusEl.textContent = 'Done';
+
+      appendOutput(name, data.text || '');
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = 'Error';
+      statusEl.style.color = 'var(--err)';
+      appendOutput(name, `[[ OCR ERROR: ${err.message || err} ]]`);
+    }
+  }
+
+  function appendOutput(name, text) {
+    const header = `\n\n--- ${name} ---\n`;
+    const sep = outputEl.value.trim().length ? '\n' : '';
+    outputEl.value += `${sep}${header}${text.trim()}\n`;
+    outputEl.scrollTop = outputEl.scrollHeight;
+  }
+
+  copyBtn.addEventListener('click', async () => {
+    outputEl.select();
+    try { await navigator.clipboard.writeText(outputEl.value); setStatus('Copied'); }
+    catch { document.execCommand('copy'); setStatus('Copied'); }
+    setTimeout(() => setStatus('Idle'), 1000);
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    const blob = new Blob([outputEl.value], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'extracted-text.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  clearAllBtn.addEventListener('click', () => {
+    queue = []; processing = false;
+    queueEl.innerHTML = '';
+    outputEl.value = '';
+    setStatus('Cleared');
+    setTimeout(() => setStatus('Idle'), 600);
+  });
+})();
+</script>
 </body>
 </html>
