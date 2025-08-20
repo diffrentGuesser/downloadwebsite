@@ -4,136 +4,117 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Image → Text (OCR)</title>
-  <meta name="description" content="Upload unlimited images and extract their text in order using Tesseract.js. All client-side." />
-  <link rel="icon" href="data:," />
-  <!-- Tesseract.js v5 CDN -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root {
-      --bg: #0f1115; --panel:#161922; --muted:#9aa4b2; --text:#e6edf3; --accent:#6ea8fe; --ok:#3fb950; --warn:#d29922; --err:#f85149;
-      --border:#242938;
+      --bg: #0f1117; 
+      --panel:#161b22; 
+      --muted:#9aa4b2; 
+      --text:#e6edf3; 
+      --accent:#4aa8ff; 
+      --ok:#3fb950; 
+      --warn:#d29922; 
+      --err:#f85149;
+      --border:#2c313c;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
-      margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      margin: 0; 
+      background: linear-gradient(135deg, #0f1117, #1a1f29);
+      color: var(--text); 
+      font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial;
     }
-    header { padding: 18px 24px; border-bottom: 1px solid var(--border); display:flex; align-items:center; gap:14px; }
+
+    header { 
+      padding: 18px 24px; 
+      border-bottom: 1px solid var(--border); 
+      display:flex; 
+      align-items:center; 
+      gap:14px; 
+      background: var(--panel);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      position: sticky; top: 0; z-index: 10;
+    }
     header h1 { font-size: 18px; margin:0; }
     header .spacer { flex:1; }
-    header .btn { padding:10px 14px; border-radius:12px; background: var(--panel); border:1px solid var(--border); color:var(--text); cursor:pointer; }
-    header .btn:hover { border-color:#2d3346; }
+    header .btn { padding:10px 16px; border-radius:12px; background: var(--accent); border:none; color:white; cursor:pointer; transition: all 0.2s ease; }
+    header .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 
-    .layout { display:grid; grid-template-columns: minmax(320px, 560px) 1fr; gap: 16px; height: calc(100% - 66px); }
+    .layout { display:grid; grid-template-columns: minmax(340px, 520px) 1fr; gap: 16px; height: calc(100% - 66px); padding: 16px; }
     @media (max-width: 900px) { .layout { grid-template-columns: 1fr; height:auto; } }
 
-    .left, .right { padding: 16px; }
+    .panel { background: var(--panel); border:1px solid var(--border); border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
 
-    .panel { background: var(--panel); border:1px solid var(--border); border-radius: 16px; }
-
-    /* Dropzone */
-    .dropzone { border: 2px dashed #2d3346; border-radius: 16px; padding: 24px; text-align: center; transition: 0.2s border-color, 0.2s background; cursor:pointer; }
-    .dropzone.dragover { background: rgba(110,168,254,0.08); border-color: var(--accent); }
-    .dropzone input { display:none; }
-    .dropzone h2 { margin: 0 0 6px; font-size: 18px; }
-    .muted { color: var(--muted); font-size: 13px; }
+    /* Upload zone */
+    .upload-container { padding: 30px; text-align: center; cursor: pointer; transition: 0.3s; border: 2px dashed var(--border); border-radius: 14px; }
+    .upload-container:hover { border-color: var(--accent); background: rgba(74,168,255,0.05); }
+    #file-input { display:none; }
+    .upload-container h2 { margin: 0 0 10px; font-size: 18px; color: var(--accent); }
+    .upload-container .muted { color: var(--muted); font-size: 13px; }
 
     /* Queue */
-    .queue { margin-top: 16px; max-height: 46vh; overflow: auto; padding: 8px; display:flex; flex-direction:column; gap:10px; }
-    .item { display:flex; gap:12px; padding:10px; border:1px solid var(--border); border-radius: 12px; background:#111421; }
+    .queue { margin-top: 16px; max-height: 50vh; overflow-y: auto; padding: 8px; display:flex; flex-direction:column; gap:12px; }
+    .item { display:flex; gap:14px; padding:12px; border:1px solid var(--border); border-radius: 12px; background:#111621; transition: transform 0.2s; }
+    .item:hover { transform: translateY(-2px); }
     .item.error { border-color: var(--err); }
-    .thumb { width: 56px; height: 56px; border-radius: 8px; background:#0c0f18; overflow:hidden; display:grid; place-items:center; }
+    .thumb { width: 70px; height: 70px; border-radius: 10px; background:#0c0f18; overflow:hidden; flex-shrink: 0; }
     .thumb img { width:100%; height:100%; object-fit:cover; }
     .meta { flex:1; min-width: 0; }
-    .meta .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .meta .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight: 600; }
     .progress { height: 8px; background:#0c0f18; border-radius:6px; overflow:hidden; margin-top:8px; }
-    .bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s linear; }
+    .bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s linear; border-radius: 6px; }
     .status { font-size: 12px; color: var(--muted); margin-top:6px; }
     .status.error { color: var(--err); }
 
     /* Right panel */
     .right .panel { height: calc(100% - 0px); display:flex; flex-direction: column; }
-    .toolbar { display:flex; gap:8px; padding: 12px; border-bottom:1px solid var(--border); }
-    .toolbar .btn { padding:8px 12px; border:1px solid var(--border); border-radius: 10px; background:#111421; color:var(--text); cursor:pointer; }
-    .toolbar .btn:hover { border-color:#2d3346; }
-    .toolbar .pill { margin-left:auto; padding: 6px 10px; border:1px solid var(--border); border-radius:999px; font-size:12px; color: var(--muted); background:#0c0f18; }
-    textarea { flex:1; width:100%; resize:none; padding: 14px; background: transparent; color: var(--text); border:0; outline:none; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .toolbar { display:flex; gap:10px; padding: 12px; border-bottom:1px solid var(--border); }
+    .toolbar .btn { padding:10px 14px; border:none; border-radius: 10px; background: var(--accent); color:#fff; cursor:pointer; transition:0.2s; }
+    .toolbar .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .toolbar .pill { margin-left:auto; padding: 6px 12px; border-radius:999px; font-size:12px; color: var(--muted); background:#0c0f18; }
+    textarea { flex:1; width:100%; resize:none; padding: 16px; background: #0c0f18; color: var(--text); border:0; outline:none; font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono"; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
 
     footer { padding: 10px 16px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    
+
     /* Toast notifications */
-    .toast-container {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .toast {
-      padding: 12px 16px;
-      border-radius: 8px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      animation: toastIn 0.3s ease-out;
-    }
-    .toast.error {
-      border-color: var(--err);
-    }
-    .toast.success {
-      border-color: var(--ok);
-    }
-    .toast.warning {
-      border-color: var(--warn);
-    }
-    @keyframes toastIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-    @keyframes toastOut {
-      from { transform: translateX(0); opacity: 1; }
-      to { transform: translateX(100%); opacity: 0; }
-    }
+    .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+    .toast { padding: 12px 16px; border-radius: 10px; background: #1c212e; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.4); font-size: 14px; animation: toastIn 0.3s ease-out; }
+    .toast.error { border-color: var(--err); }
+    .toast.success { border-color: var(--ok); }
+    .toast.warning { border-color: var(--warn); }
+    @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes toastOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
   </style>
 </head>
 <body>
   <header>
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h6l2 2h6a2 2 0 0 1 2 2v3H3V5Z" stroke="#6ea8fe" stroke-width="1.5"/><path d="M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" stroke="#6ea8fe" stroke-width="1.5"/><path d="M7 14h10M7 18h6" stroke="#6ea8fe" stroke-width="1.5" stroke-linecap="round"/></svg>
-    <h1>Image → Text (OCR)</h1>
+    <h1>📖 Image → Text (OCR)</h1>
     <div class="spacer"></div>
-    <button id="clearAllBtn" class="btn" title="Clear queue and output">Clear</button>
+    <button id="clearAllBtn" class="btn">Clear</button>
   </header>
 
   <div class="layout">
     <section class="left">
-      <div class="panel" id="leftPanel">
-        <label class="dropzone" id="dropzone">
-          <input id="fileInput" type="file" accept="image/*" multiple />
-          <h2>Drop images here or click to select</h2>
-          <div class="muted">Unlimited images. Everything runs locally in your browser.</div>
+      <div class="panel">
+        <label class="upload-container" for="file-input">
+          <input type="file" id="file-input" accept="image/*" multiple>
+          <h2>Upload Images</h2>
+          <div class="muted">Click or drag images anywhere on the page</div>
         </label>
         <div class="queue" id="queue"></div>
       </div>
     </section>
 
     <section class="right">
-      <div class="panel" id="rightPanel">
+      <div class="panel">
         <div class="toolbar">
           <button class="btn" id="copyBtn">Copy all text</button>
           <button class="btn" id="downloadBtn">Download .txt</button>
           <span class="pill" id="statusPill">Idle</span>
         </div>
-        <textarea id="output" placeholder="Extracted text will appear here in the same order as your images..."></textarea>
-        <footer>
-          OCR by <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noreferrer">Tesseract.js</a>. Your images never leave this device.
-        </footer>
+        <textarea id="output" placeholder="Extracted text will appear here..."></textarea>
+        <footer>OCR powered by <a href="https://github.com/naptha/tesseract.js" target="_blank" style="color:var(--accent)">Tesseract.js</a>. Everything runs locally.</footer>
       </div>
     </section>
   </div>
@@ -142,8 +123,7 @@
 
 <script>
 (() => {
-  const dropzone = document.getElementById('dropzone');
-  const fileInput = document.getElementById('fileInput');
+  const fileInput = document.getElementById('file-input');
   const queueEl = document.getElementById('queue');
   const outputEl = document.getElementById('output');
   const copyBtn = document.getElementById('copyBtn');
@@ -152,42 +132,30 @@
   const statusPill = document.getElementById('statusPill');
   const toastContainer = document.getElementById('toastContainer');
 
-  /** Simple sequential queue to process images in order */
-  let queue = []; // { id, file, name, el, bar, statusEl }
+  let queue = [];
   let processing = false;
   let idCounter = 0;
 
-  // Supported file types
   const supportedTypes = ['image/jpeg', 'image/png', 'image/bmp', 'image/webp'];
-  
+
   function showToast(message, type = 'normal') {
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.textContent = message;
     toastContainer.appendChild(toast);
-    
-    setTimeout(() => {
-      toast.style.animation = 'toastOut 0.3s ease-out forwards';
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    setTimeout(() => { toast.style.animation = 'toastOut 0.3s ease-out forwards'; setTimeout(() => toast.remove(), 300); }, 3000);
   }
-
   function setStatus(text) { statusPill.textContent = text; }
 
   function bytesToNice(n) {
     if (n < 1024) return `${n} B`;
-    const u = ['KB','MB','GB'];
-    let i = -1; do { n = n/1024; i++; } while (n >= 1024 && i < u.length - 1);
+    const u = ['KB','MB','GB']; let i = -1; 
+    do { n = n/1024; i++; } while (n >= 1024 && i < u.length - 1);
     return `${n.toFixed(1)} ${u[i]}`;
-  }
-
-  function isValidFileType(file) {
-    return supportedTypes.includes(file.type);
   }
 
   function createItem(file) {
     const id = ++idCounter;
-
     const el = document.createElement('div');
     el.className = 'item';
     el.innerHTML = `
@@ -198,172 +166,86 @@
         <div class="progress"><div class="bar"></div></div>
         <div class="status">Queued</div>
       </div>`;
-
     const thumb = el.querySelector('.thumb');
-    
-    // Image preview
     const img = document.createElement('img');
-    img.alt = file.name;
     img.src = URL.createObjectURL(file);
     img.onload = () => URL.revokeObjectURL(img.src);
-    thumb.innerHTML = '';
-    thumb.appendChild(img);
+    thumb.innerHTML = ''; thumb.appendChild(img);
 
     const bar = el.querySelector('.bar');
     const statusEl = el.querySelector('.status');
-
     queueEl.appendChild(el);
-
     const item = { id, file, name: file.name, el, bar, statusEl };
     queue.push(item);
     return item;
   }
 
-  function onFilesSelected(files) {
+  function handleFiles(files) {
     if (!files || !files.length) return;
-    
     let validFiles = 0;
     for (const file of files) {
-      if (isValidFileType(file)) {
-        createItem(file);
-        validFiles++;
+      if (supportedTypes.includes(file.type)) {
+        createItem(file); validFiles++;
       } else {
-        showToast(`Skipped ${file.name}: Unsupported file type`, 'warning');
+        showToast(`Skipped ${file.name}: Unsupported type`, 'warning');
       }
     }
-    
-    if (validFiles > 0) {
-      showToast(`Added ${validFiles} file${validFiles > 1 ? 's' : ''} to queue`, 'success');
-      processQueue();
-    }
-    
-    // Reset the input to fix the double upload issue
-    fileInput.value = '';
+    if (validFiles > 0) { showToast(`Added ${validFiles} file(s)`, 'success'); processQueue(); }
   }
 
-  // Drag & drop handlers
-  dropzone.addEventListener('click', () => fileInput.click());
-  dropzone.addEventListener('dragover', (e) => {
-    e.preventDefault(); 
-    dropzone.classList.add('dragover');
-  });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-  dropzone.addEventListener('drop', (e) => {
-    e.preventDefault(); 
-    dropzone.classList.remove('dragover');
-    onFilesSelected(e.dataTransfer.files);
-  });
-  fileInput.addEventListener('change', (e) => {
-    onFilesSelected(e.target.files);
-  });
+  fileInput.addEventListener('change', e => handleFiles(e.target.files));
+  document.body.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragover'); });
+  document.body.addEventListener('dragleave', () => document.body.classList.remove('dragover'));
+  document.body.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
 
   async function processQueue() {
     if (processing) return;
-    processing = true;
-    setStatus('Processing…');
-
+    processing = true; setStatus('Processing…');
     while (queue.length) {
-      const item = queue[0];
-      await ocrItem(item); // sequential to preserve order
-      queue.shift();
+      const item = queue[0]; await ocrItem(item); queue.shift();
     }
-
-    setStatus('Idle');
-    processing = false;
+    setStatus('Idle'); processing = false;
   }
 
   async function ocrItem(item) {
     const { file, bar, statusEl, name, el } = item;
     statusEl.textContent = 'Recognizing…';
-
     try {
       const { data } = await Tesseract.recognize(file, 'eng', {
-        logger: (m) => {
-          if (m.status && typeof m.progress === 'number') {
-            const p = Math.round(m.progress * 100);
-            bar.style.width = p + '%';
-            statusEl.textContent = `${m.status} (${p}%)`;
-          }
-        }
+        logger: (m) => { if (m.progress != null) { const p = Math.round(m.progress*100); bar.style.width = p+'%'; statusEl.textContent = `${m.status} (${p}%)`; } }
       });
-
-      bar.style.width = '100%';
-      statusEl.textContent = 'Done';
-      statusEl.style.color = 'var(--ok)';
-
-      // Append only the extracted text without filename headers
+      bar.style.width = '100%'; statusEl.textContent = 'Done'; statusEl.style.color = 'var(--ok)';
       appendOutput(data.text || '');
     } catch (err) {
-      console.error(err);
-      statusEl.textContent = 'Error: ' + (err.message || 'Processing failed');
-      statusEl.classList.add('error');
-      el.classList.add('error');
+      statusEl.textContent = 'Error'; statusEl.classList.add('error'); el.classList.add('error');
       appendOutput(`[[ OCR ERROR: ${err.message || err} ]]`);
       showToast(`Failed to process ${name}`, 'error');
     }
   }
 
   function appendOutput(text) {
-    const cleanText = text.trim();
-    if (!cleanText) return;
-    
-    // Add a separator if there's already content
+    const clean = text.trim(); if (!clean) return;
     const sep = outputEl.value.trim().length ? '\n\n' : '';
-    outputEl.value += `${sep}${cleanText}`;
-    outputEl.scrollTop = outputEl.scrollHeight;
+    outputEl.value += sep + clean; outputEl.scrollTop = outputEl.scrollHeight;
   }
 
   copyBtn.addEventListener('click', async () => {
-    if (!outputEl.value.trim()) {
-      showToast('No text to copy', 'warning');
-      return;
-    }
-    
-    outputEl.select();
-    try { 
-      await navigator.clipboard.writeText(outputEl.value); 
-      showToast('Text copied to clipboard', 'success');
-    } catch (err) { 
-      try {
-        document.execCommand('copy');
-        showToast('Text copied to clipboard', 'success');
-      } catch (e) {
-        showToast('Failed to copy text', 'error');
-      }
-    }
+    if (!outputEl.value.trim()) return showToast('No text to copy', 'warning');
+    try { await navigator.clipboard.writeText(outputEl.value); showToast('Copied', 'success'); }
+    catch { showToast('Copy failed', 'error'); }
   });
 
   downloadBtn.addEventListener('click', () => {
-    if (!outputEl.value.trim()) {
-      showToast('No text to download', 'warning');
-      return;
-    }
-    
-    const blob = new Blob([outputEl.value], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; 
-    a.download = 'extracted-text.txt';
-    document.body.appendChild(a); 
-    a.click(); 
-    a.remove();
-    URL.revokeObjectURL(url);
+    if (!outputEl.value.trim()) return showToast('No text to download', 'warning');
+    const blob = new Blob([outputEl.value], { type: 'text/plain' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'extracted-text.txt';
+    document.body.appendChild(a); a.click(); a.remove();
     showToast('Text downloaded', 'success');
   });
 
   clearAllBtn.addEventListener('click', () => {
-    if (queue.length === 0 && outputEl.value === '') {
-      showToast('Already empty', 'warning');
-      return;
-    }
-    
-    queue = []; 
-    processing = false;
-    queueEl.innerHTML = '';
-    outputEl.value = '';
-    setStatus('Cleared');
-    showToast('Queue and output cleared', 'success');
-    setTimeout(() => setStatus('Idle'), 1000);
+    queue = []; processing = false; queueEl.innerHTML = ''; outputEl.value = '';
+    setStatus('Cleared'); showToast('Cleared', 'success'); setTimeout(() => setStatus('Idle'), 1000);
   });
 })();
 </script>
